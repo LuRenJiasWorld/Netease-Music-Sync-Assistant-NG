@@ -1,11 +1,26 @@
 {
   "name": "netease-music-sync-assistant-ng",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "description": "Sync Netease Music playlist with local at ease",
   "main": "index.js",
   "scripts": {
+    "start": "node ./index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "LuRenJiasWorld<loli@lurenjia.in>",
-  "license": "MIT License"
+  "license": "MIT License",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "chalk": "^4.1.0",
+    "ffmetadata": "^1.7.0",
+    "file-type": "^16.3.0",
+    "filenamify": "^4.2.0",
+    "ini": "^2.0.0",
+    "lodash": "^4.17.21",
+    "loglevel": "^1.7.1",
+    "loglevel-plugin-prefix": "^0.8.4",
+    "nodejs-file-downloader": "^4.4.2",
+    "sleepjs": "^4.0.3",
+    "url-parameter-append": "^1.0.4"
+  }
 }

@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+package-lock.json
+data/playlist.json
+data/cookie.txt
+config/config.ini
