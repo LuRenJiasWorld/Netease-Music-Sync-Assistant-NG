@@ -72,8 +72,8 @@ const login = async () => {
         );
         
         log.debug('登录结果: ' + JSON.stringify(response.data));
-        log.debug('Cookie从服务器获取成功: ' + response.headers['set-cookie']);
-        return response.headers['set-cookie'];
+        log.debug('Cookie从服务器获取成功: ' + response.data['cookie']);
+        return response.data['cookie'];
     } catch (e) {
         log.error('登录时出现错误: ' + e);
     }
