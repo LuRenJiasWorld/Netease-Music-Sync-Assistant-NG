@@ -215,12 +215,13 @@ const downloadMusic = async (idList) => {
                             title: musicName,
                             album: albumName,
                             date: releaseYear,
-                            artistName: artistName,
+                            artist: artistName,
                             disc: discIndex,
                             track: trackIndex,
                         },
                         {
                             attachments: [`${config.generic.cover_store_path}/${tempCoverName}`],
+                            "id3v2.3": true,
                         },
                         function (err) {
                             if (err) reject("Error writing cover art: " + err);
