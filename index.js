@@ -191,6 +191,13 @@ const downloadMusic = async (idList) => {
                 continue;
             }
 
+            // 仅供试听
+            if (musicDownloadInfo.freeTrialInfo !== null) {
+                log.warn(`⚠️ 歌曲《${musicFileName}》仅供试听，可能是由于没有版权导致，已自动跳过`);
+                syncedIdList.unshift(currentId);
+                continue;
+            }
+
             await (new Downloader({
                 url: musicDownloadInfo.url,
                 directory: config.generic.temp_music_store_path,
