@@ -164,15 +164,17 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
                             }
     
                             if (mdb.removed || mdb.isLast) {
-                                var mdbVorbis = flacmetadata.data.MetaDataBlockVorbisComment.create(
-                                    mdb.isLast, vendor, comments
-                                );
-                                this.push(mdbVorbis.publish());
-    
                                 let mdbPicture = flacmetadata.data.MetaDataBlockPicture.create(
                                     mdb.isLast, '', coverMime.mime, '', '', '', '', '', fs.readFileSync(coverPath)
                                 );
                                 this.push(mdbPicture.publish());
+
+                                var mdbVorbis = flacmetadata.data.MetaDataBlockVorbisComment.create(
+                                    mdb.isLast, vendor, comments
+                                );
+                                this.push(mdbVorbis.publish());
+
+                                this.mdb.isLast = true;
                             }
                         });
 
