@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const fsPromised = require('fs').promises;
 const ini = require('ini');
 const axios = require('axios');
@@ -6,6 +7,7 @@ const log = require('loglevel');
 const prefix = require('loglevel-plugin-prefix');
 const chalk = require('chalk');
 const ffmetadata = require('ffmetadata');
+const flacmetadata = require("flac-metadata2");
 const filenamify = require('filenamify');
 const Downloader = require('nodejs-file-downloader');
 const urlParameterAppend = require('url-parameter-append');
@@ -112,6 +114,87 @@ const diffPlaylist = async (playlist) => {
     return newIds;
 };
 
+// ID3信息集成
+// 顺便把回调函数改成Promise
+const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
+    switch (musicPath.split('.').pop()) {
+        case "mp3":
+            return new Promise((resolve, reject) => {
+                ffmetadata.write(
+                    musicPath,
+                    musicMeta,
+                    {
+                        attachments: [coverPath],
+                        "id3v2.3": true,
+                    },
+                    function (err) {
+                        if (err) reject("Error writing cover art: " + err);
+                        else resolve("ID3 info added.");
+                    },
+                );
+            });
+        case "flac":
+            const tempMusicPath = musicPath + '.temp';
+
+            return new Promise((resolve, reject) => {
+                try {
+                    const processor = new flacmetadata.Processor();
+
+                    fs.renameSync(musicPath, tempMusicPath);
+                    const reader = fs.createReadStream(tempMusicPath);
+                    const writer = fs.createWriteStream(musicPath);
+
+                    fileType.fromFile(coverPath).then((coverMime) => {
+                        const vendor = "reference libFLAC 1.2.1 20070917";
+                        const comments = [
+                            `TITLE=${musicMeta.title}`,
+                            `ALBUM=${musicMeta.album}`,
+                            `DATE=${musicMeta.date}`,
+                            `ARTIST=${musicMeta.artist}`,
+                            `TRACKNUMBER=${musicMeta.track}`
+                        ];
+    
+                        processor.on("preprocess", function (mdb) {
+                            if (mdb.type === flacmetadata.Processor.MDB_TYPE_VORBIS_COMMENT) {
+                                mdb.remove();
+                            }
+    
+                            if (mdb.type === flacmetadata.Processor.MDB_TYPE_PICTURE) {
+                                mdb.remove();
+                            }
+    
+                            if (mdb.removed || mdb.isLast) {
+                                var mdbVorbis = flacmetadata.data.MetaDataBlockVorbisComment.create(
+                                    mdb.isLast, vendor, comments
+                                );
+                                this.push(mdbVorbis.publish());
+    
+                                let mdbPicture = flacmetadata.data.MetaDataBlockPicture.create(
+                                    mdb.isLast, '', coverMime.mime, '', '', '', '', '', fs.readFileSync(coverPath)
+                                );
+                                this.push(mdbPicture.publish());
+                            }
+                        });
+
+                        reader.on('end', () => {
+                            resolve();
+                        });
+                        reader.pipe(processor).pipe(writer);
+                    });
+                    
+                } catch (e) {
+                    reject(e);
+                }
+            }).finally(() => {
+                if (fs.statSync(tempMusicPath).isFile() === true) {
+                    fs.rmSync(tempMusicPath);
+                }
+            });
+        default:
+            break;
+    }
+};
+
 const downloadMusic = async (idList) => {
     let download_counter = config.generic.download_limit;
     const downloadSleepTime = config.generic.download_sleep_time;
@@ -165,9 +248,6 @@ const downloadMusic = async (idList) => {
             log.debug('歌曲详情(解析后): ' + JSON.stringify(await parseMusicDetail(musicDetail)));
 
             const tempCoverName = `${currentId}.jpg`;
-            const tempMusicName = `${currentId}.mp3`;
-            const musicFileName = filenamify(`${artistName} - ${musicName}.mp3`);
-            log.debug('文件名: ' + musicFileName);
 
             // 下载歌曲封面
             log.debug('下载歌曲封面');
@@ -183,6 +263,16 @@ const downloadMusic = async (idList) => {
             response = await request.get(`/song/url?id=${currentId}&br=${config.generic.music_bitrate}`);
             const musicDownloadInfo = response.data.data[0];
             log.debug('音乐下载信息详情: ' + JSON.stringify(musicDownloadInfo));
+
+            const tempMusicName = `${currentId}.${musicDownloadInfo.type || 'mp3'}`;
+            const musicFileName = filenamify(`${artistName} - ${musicName}.${musicDownloadInfo.type || 'mp3'}`);
+            const lyricFileName = (() => {
+                const musicFileNameArray = musicFileName.split('.');
+                musicFileNameArray.pop();
+                musicFileNameArray.push('.lrc');
+                return musicFileNameArray.join('');
+            })();
+            log.debug('文件名: ' + musicFileName);
 
             // 没有资源，可能是版权问题
             if (musicDownloadInfo.code !== 200) {
@@ -205,45 +295,57 @@ const downloadMusic = async (idList) => {
                 cloneFiles: false,
             })).download();
 
-            // ID3信息集成
-            // 顺便把回调函数改成Promise
-            const id3Embed = () => {
-                return new Promise((resolve, reject) => {
-                    ffmetadata.write(
-                        `${config.generic.temp_music_store_path}/${tempMusicName}`,
-                        {
-                            title: musicName,
-                            album: albumName,
-                            date: releaseYear,
-                            artist: artistName,
-                            disc: discIndex,
-                            track: trackIndex,
-                        },
-                        {
-                            attachments: [`${config.generic.cover_store_path}/${tempCoverName}`],
-                            "id3v2.3": true,
-                        },
-                        function (err) {
-                            if (err) reject("Error writing cover art: " + err);
-                            else resolve("ID3 info added.");
-                        },
-                    );
-                });
-            };
-
             log.debug('集成ID3信息中');
-            await id3Embed();
+            await id3Embed({
+                musicPath: path.join(config.generic.temp_music_store_path, tempMusicName),
+                coverPath: path.join(config.generic.cover_store_path, tempCoverName),
+                musicMeta: {
+                    title: musicName,
+                    album: albumName,
+                    date: releaseYear,
+                    artist: artistName,
+                    disc: discIndex,
+                    track: trackIndex,
+                }
+            });
+
+            // 下载歌词
+            if (config.generic.download_lyric === true) {
+                log.debug('下载歌词中');
+                response = await request.get(`/lyric?id=${currentId}`);
+                log.debug('歌词信息详情: ' + JSON.stringify(response.data));
+                if (response.data.nolyric !== true && response.data.lrc) {
+                    const lyric = response.data.lrc.lyric;
+                    const lyricPath = path.join(config.generic.temp_music_store_path, lyricFileName);
+                    fs.writeFileSync(lyricPath, lyric, {
+                        encoding: 'utf-8',
+                    });
+                } else {
+                    log.debug('没有歌词，跳过下载歌词...');
+                }
+            }
 
             // 移动文件到音乐目录
             log.debug('移动文件到音乐目录中');
             await fsPromised.rename(
-                `${config.generic.temp_music_store_path}/${tempMusicName}`,
-                `${config.generic.music_store_path}/${musicFileName}`,
+                path.join(config.generic.temp_music_store_path, tempMusicName),
+                path.join(config.generic.music_store_path, musicFileName),
             );
+
+            if (fs.existsSync(path.join(config.generic.temp_music_store_path, lyricFileName))) {
+                await fsPromised.rename(
+                    path.join(config.generic.temp_music_store_path, lyricFileName),
+                    path.join(config.generic.music_store_path, lyricFileName),
+                );
+            }
 
             // 检查文件有效性
             const fileInfo = await fileType.fromFile(`${config.generic.music_store_path}/${musicFileName}`);
-            if (fileInfo.ext === 'mp3' && fileInfo.mime === 'audio/mpeg') {
+            log.debug('文件类型: ' + fileInfo.mime);
+            if (
+                (fileInfo.ext === 'mp3' && fileInfo.mime === 'audio/mpeg')
+                || (fileInfo.ext === 'flac' && fileInfo.mime === 'audio/x-flac')
+            ) {
                 download_counter--;
                 syncedIdList.unshift(currentId);
                 log.info(`🎉 ${musicFileName} 下载成功! 等待${downloadSleepTime}ms...`);

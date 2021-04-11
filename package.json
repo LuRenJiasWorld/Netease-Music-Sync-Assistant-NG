@@ -15,6 +15,7 @@
     "ffmetadata": "^1.7.0",
     "file-type": "^16.3.0",
     "filenamify": "^4.2.0",
+    "flac-metadata2": "^1.0.0",
     "ini": "^2.0.0",
     "lodash": "^4.17.21",
     "loglevel": "^1.7.1",
