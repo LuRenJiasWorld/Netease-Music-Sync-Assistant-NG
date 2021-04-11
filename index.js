@@ -124,9 +124,6 @@ const downloadMusic = async (idList) => {
     let retryCounter = 0;
 
     while (true) {
-        log.info(
-            `🚗 正在同步第${config.generic.download_limit - download_counter + 1}首，列表剩余${tempIdList.length}首，本次下载剩余${download_counter}首`
-        );
         if (retryCounter >= config.generic.retry_time) {
             log.warn(
                 `⚠️ 重试${retryCounter}次后仍无法正常下载，自动跳过ID为${tempIdList.pop()}的歌曲，请手动检查！`
@@ -138,6 +135,10 @@ const downloadMusic = async (idList) => {
             );
             break;
         };
+
+        log.info(
+            `🚗 正在同步第${config.generic.download_limit - download_counter + 1}首，列表剩余${tempIdList.length}首，本次下载剩余${download_counter}首`
+        );
 
         const currentId = tempIdList.pop();
 
