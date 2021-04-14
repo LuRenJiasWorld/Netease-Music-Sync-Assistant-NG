@@ -267,7 +267,7 @@ const downloadMusic = async (idList) => {
             log.debug('音乐下载信息详情: ' + JSON.stringify(musicDownloadInfo));
 
             const tempMusicName = `${currentId}.${musicDownloadInfo.type || 'mp3'}`;
-            const musicFileName = filenamify(`${artistName} - ${musicName}.${musicDownloadInfo.type || 'mp3'}`);
+            const musicFileName = filenamify(`${musicName} - ${artistName}`) + `.${musicDownloadInfo.type || 'mp3'}`;
             const lyricFileName = (() => {
                 const musicFileNameArray = musicFileName.split('.');
                 musicFileNameArray.pop();
