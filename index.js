@@ -198,7 +198,12 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
 };
 
 const downloadMusic = async (idList) => {
-    let download_counter = config.generic.download_limit;
+    const downloadLimit = config.generic.download_limit <= idList.length
+        ? config.generic.download_limit
+        : idList.length;
+
+    let download_counter = downloadLimit
+        
     const downloadSleepTime = config.generic.download_sleep_time;
     const tempIdList = cloneDeep(idList);
     const syncedIdList = [];
@@ -214,15 +219,15 @@ const downloadMusic = async (idList) => {
                 `⚠️ 重试${retryCounter}次后仍无法正常下载，自动跳过ID为${tempIdList.pop()}的歌曲，请手动检查！`
             )
         }
-        if (download_counter === 0) {
+        if (download_counter === 0 || tempIdList.length === 0) {
             log.info(
-                `✅ 本次同步结束，已同步音乐${config.generic.download_limit - download_counter + 1}首，剩余${tempIdList.length}首待同步，请稍后重新同步`
+                `✅ 本次同步结束，已同步音乐${downloadLimit - download_counter}首，剩余${tempIdList.length}首待同步，请稍后重新同步`
             );
             break;
         };
 
         log.info(
-            `🚗 正在同步第${config.generic.download_limit - download_counter + 1}首，列表剩余${tempIdList.length}首，本次下载剩余${download_counter}首`
+            `🚗 正在同步第${downloadLimit - download_counter + 1}首，列表剩余${tempIdList.length}首，本次下载剩余${download_counter}首`
         );
 
         const currentId = tempIdList.pop();
