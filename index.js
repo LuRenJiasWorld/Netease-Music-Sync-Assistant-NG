@@ -280,6 +280,7 @@ const downloadMusic = async (idList) => {
             if (musicDownloadInfo.code !== 200) {
                 log.warn(`⚠️ 歌曲《${musicFileName}》无法下载，可能是由于没有版权导致，已自动跳过`);
                 syncedIdList.unshift(currentId);
+                download_counter -= 1;
                 continue;
             }
 
@@ -287,6 +288,7 @@ const downloadMusic = async (idList) => {
             if (musicDownloadInfo.freeTrialInfo !== null) {
                 log.warn(`⚠️ 歌曲《${musicFileName}》仅供试听，可能是由于没有版权导致，已自动跳过`);
                 syncedIdList.unshift(currentId);
+                download_counter -= 1;
                 continue;
             }
 
