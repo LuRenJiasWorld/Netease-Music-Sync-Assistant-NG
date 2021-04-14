@@ -271,8 +271,8 @@ const downloadMusic = async (idList) => {
             const lyricFileName = (() => {
                 const musicFileNameArray = musicFileName.split('.');
                 musicFileNameArray.pop();
-                musicFileNameArray.push('.lrc');
-                return musicFileNameArray.join('');
+                musicFileNameArray.push('lrc');
+                return musicFileNameArray.join('.');
             })();
             log.debug('文件名: ' + musicFileName);
 
