@@ -395,7 +395,8 @@ const parseMusicDetail = async (musicDetail) => {
     let artistName;
     let ar = musicDetail.ar;
     ar = ar.map((eachArtist) => (eachArtist.name));
-    artistName = ar.join(', ');
+    // 避免歌手太多导致文件名过长
+    artistName = ar.slice(0, 5).join(', ');
 
     // 碟片编号
     let discIndex;
