@@ -1,6 +1,7 @@
 const fs = require('fs');
-const path = require('path');
+const moveFile = require('move-file');
 const fsPromised = require('fs').promises;
+const path = require('path');
 const ini = require('ini');
 const axios = require('axios');
 const log = require('loglevel');
@@ -14,6 +15,9 @@ const urlParameterAppend = require('url-parameter-append');
 const fileType = require('file-type');
 const { cloneDeep } = require('lodash');
 const { sleep } = require('sleepjs');
+const {
+    login_cellphone,
+} = require('NeteaseCloudMusicApi')
 
 // 初始化配置
 const config = ini.parse(fs.readFileSync('./config/config.ini', 'utf-8'));
@@ -32,11 +36,11 @@ prefix.reg(log);
 
 prefix.apply(log, {
     format(level, name, timestamp) {
-      return `${chalk.gray(`[${timestamp}]`)} ${logColors[level.toUpperCase()](level)}`;
+        return `${chalk.gray(`[${timestamp}]`)} ${logColors[level.toUpperCase()](level)}`;
     },
 });
-    
-log.setLevel(config.runtime.log_level)
+
+log.setLevel(config.runtime.log_level);
 
 // 初始化Axios
 let request = axios.create({
@@ -51,7 +55,7 @@ const welcome = async () => {
     log.info(`🙆‍ 作者：${metaData.author}，光荣地以${metaData.license}释出源码，祝您使用愉快！`);
     log.info(`📃 请阅读根目录下的README.md获取使用详情，或在 https://example.placeholder/ 求助。`);
     log.info('');
-}
+};
 
 const login = async () => {
     if (config.generic.save_cookie === true) {
@@ -64,7 +68,7 @@ const login = async () => {
 
         if (localCookie !== "") {
             log.debug('Cookie从本地获取成功: ' + localCookie);
-            return localCookie
+            return localCookie;
         };
     }
     try {
@@ -72,7 +76,7 @@ const login = async () => {
         const response = await request.get(
             `${config.api.api_endpoint}/login/cellphone?phone=${config.account.phone}&md5_password=${config.account.md5_password}`
         );
-        
+
         log.debug('登录结果: ' + JSON.stringify(response.data));
         log.debug('Cookie从服务器获取成功: ' + response.data['cookie']);
         return response.data['cookie'];
@@ -81,7 +85,7 @@ const login = async () => {
     }
 };
 
-const saveCookie = async (cookie) => {    
+const saveCookie = async (cookie) => {
     if (config.generic.save_cookie === true) {
         log.debug('将Cookie保存到本地');
         fs.writeFileSync("./data/cookie.txt", cookie.toString());
@@ -95,7 +99,7 @@ const getUserInfo = async () => {
 const fetchPlaylist = async () => {
     const response = await request.get(`/playlist/detail?id=${config.account.playlist_id}`);
     return response.data.playlist.trackIds;
-}
+};
 
 const diffPlaylist = async (playlist) => {
     if (!fs.existsSync('./data/playlist.json')) {
@@ -140,7 +144,7 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
                 try {
                     const processor = new flacmetadata.Processor();
 
-                    fs.renameSync(musicPath, tempMusicPath);
+                    moveFile.sync(musicPath, tempMusicPath);
                     const reader = fs.createReadStream(tempMusicPath);
                     const writer = fs.createWriteStream(musicPath);
 
@@ -153,16 +157,16 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
                             `ARTIST=${musicMeta.artist}`,
                             `TRACKNUMBER=${musicMeta.track}`
                         ];
-    
+
                         processor.on("preprocess", function (mdb) {
                             if (mdb.type === flacmetadata.Processor.MDB_TYPE_VORBIS_COMMENT) {
                                 mdb.remove();
                             }
-    
+
                             if (mdb.type === flacmetadata.Processor.MDB_TYPE_PICTURE) {
                                 mdb.remove();
                             }
-    
+
                             if (mdb.removed || mdb.isLast) {
                                 let mdbPicture = flacmetadata.data.MetaDataBlockPicture.create(
                                     mdb.isLast, '', coverMime.mime, '', '', '', '', '', fs.readFileSync(coverPath)
@@ -183,7 +187,7 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
                         });
                         reader.pipe(processor).pipe(writer);
                     });
-                    
+
                 } catch (e) {
                     reject(e);
                 }
@@ -197,13 +201,145 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
     }
 };
 
+const downloadLyric = async (currentId, lyricFileName) => {
+    log.debug('下载歌词中');
+    const response = await request.get(`/lyric?id=${currentId}`);
+    log.debug('歌词信息详情: ' + JSON.stringify(response.data));
+    if (response.data.nolyric !== true && response.data.lrc) {
+        let lyric = response.data.lrc.lyric.split('\n');
+        let tlyric = [];
+        if (config.generic.download_lyric_translation === true) {
+            log.debug('下载歌词翻译');
+            if (response.data.tlyric && response.data.tlyric.lyric !== "") {
+                tlyric = response.data.tlyric.lyric.split('\n');
+            }
+        }
+
+        const lyricTimestampRegex = /^\[([0-9]{2}\:[0-9]{2}[:\.])([0-9]{2,3})?\](.+)$/;
+        if (tlyric.length !== 0) {
+            log.debug('合并歌词翻译');
+            tlyric.forEach((eachTLyric, tlyricIdx) => {
+                const eachTLyricTimestampMatch = eachTLyric.match(lyricTimestampRegex);
+                // 如果不匹配，直接跳过
+                if (eachTLyricTimestampMatch === null) return;
+                const [
+                    eachTLyricFullText,
+                    eachTLyricTimestampPrefix,
+                    eachTLyricMillisecTimestamp,
+                    pureTLyric,
+                ] = eachTLyricTimestampMatch;
+
+                let inserted = false;
+
+                // 为什么要逆向forEach：
+                // 为了避免播放器显示歌词的焦点在翻译上，后续会将每条翻译的时间轴调整到和下一条歌词一致
+                // 这也就导致如果按顺序forEach，匹配到下一个翻译时，与其时间轴相同的歌词存在两个
+                // 而第一个是上一个翻译，所以这里直接反过来forEach，就能保证匹配到的第一个是原文而不是翻译
+                // NOTE: 因为是逆向forEach，所以需要将idx进行转换: newIdx = lyric.length - lyricIdx - 1
+                lyric.slice().reverse().forEach((eachLyric, lyricIdx) => {
+                    if (inserted === true) return;
+
+                    lyricIdx = lyric.length - lyricIdx - 1;
+
+                    const eachLyricTimestampMatch = eachLyric.match(lyricTimestampRegex);
+
+                    if (eachLyricTimestampMatch === null) return;
+
+                    const [
+                        eachLyricFullText,
+                        eachLyricTimestampPrefix,
+                        eachLyricMillisecTimestamp,
+                        pureLyric,
+                    ] = eachLyricTimestampMatch;
+
+                    // 如果时间一致，将翻译歌词插入到普通歌词后面
+                    if (
+                        eachLyricTimestampPrefix === eachTLyricTimestampPrefix
+                        && eachLyricMillisecTimestamp === eachTLyricMillisecTimestamp
+                    ) {
+                        log.debug('歌词时间一致: ' + eachLyric + " & " + eachTLyric);
+                        // 让播放器的歌词焦点在原文上，因此译文的时间轴需要滞后
+                        lyric.splice(lyricIdx + 1, 0, eachTLyric.replace(lyricTimestampRegex, (
+                            match,
+                            eachTLyricTimestampPrefix,
+                            eachTLyricMillisecTimestamp,
+                            pureTLyric,
+                            offset,
+                            string
+                        ) => {
+                            // 给pureTLyric加一个括号，视觉上做下区分
+                            pureTLyric = `(${pureTLyric})`;
+
+                            // 如果后面没有歌词了，时间就设置为99:99.99
+                            if (lyricIdx === lyric.length - 2) {
+                                return `[99:99:99]${pureTLyric}`;
+                            } else {
+                                const nextLineLyric = lyric[lyricIdx + 1];
+                                const nextLineLyricTimestampMatch = nextLineLyric.match(lyricTimestampRegex);
+                                // 如果歌词不合规则，返回原数据，交给下面的逻辑清除
+                                if (nextLineLyricTimestampMatch === null)
+                                    return `[${eachTLyricTimestampPrefix}${eachTLyricMillisecTimestamp}]${pureTLyric}`;
+                                const [
+                                    nextLineLyricFullText,
+                                    nextLineLyricTimestampPrefix,
+                                    nextLineLyricMillisecTimestamp,
+                                    nextLinePureLyric,
+                                ] = nextLineLyricTimestampMatch;
+                                return `[${nextLineLyricTimestampPrefix}${nextLineLyricMillisecTimestamp}]${pureTLyric}`;
+                            }
+                        }));
+                        inserted = true;
+                    }
+                });
+            });
+        }
+
+        // 过滤不合规则的歌词
+        lyric = lyric.filter((eachLyric) => (
+            eachLyric.match(lyricTimestampRegex) !== null
+        ));
+
+        // 修复歌词毫秒值
+        lyric = lyric.map((eachLyric) => {
+            return eachLyric.replace(lyricTimestampRegex, (
+                match,
+                eachLyricTimestampPrefix,
+                eachLyricMillisecTimestamp,
+                pureLyric,
+                offset,
+                string
+            ) => {
+                let newEachLyricMillisecTimestamp = "";
+                if (eachLyricMillisecTimestamp.length !== 2) {
+                    // 只要前两位
+                    newEachLyricMillisecTimestamp = (eachLyricMillisecTimestamp + "00").substr(0, 2);
+                } else {
+                    newEachLyricMillisecTimestamp = eachLyricMillisecTimestamp;
+                }
+                return `[${eachLyricTimestampPrefix}${newEachLyricMillisecTimestamp}]${pureLyric}`;
+            });
+        });
+
+        log.debug('待输出歌词:' + JSON.stringify(lyric));
+
+        const lyricText = lyric.join('\n');
+
+        const lyricPath = path.join(config.generic.temp_music_store_path, lyricFileName);
+        fs.writeFileSync(lyricPath, lyricText, {
+            encoding: 'utf-8',
+        });
+    } else {
+        log.debug('没有歌词，跳过下载歌词...');
+    }
+};
+
 const downloadMusic = async (idList) => {
     const downloadLimit = config.generic.download_limit <= idList.length
         ? config.generic.download_limit
         : idList.length;
 
-    let download_counter = downloadLimit
-        
+    let download_counter = downloadLimit;
+
     const downloadSleepTime = config.generic.download_sleep_time;
     const tempIdList = cloneDeep(idList);
     const syncedIdList = [];
@@ -217,7 +353,8 @@ const downloadMusic = async (idList) => {
         if (retryCounter >= config.generic.retry_time) {
             log.warn(
                 `⚠️ 重试${retryCounter}次后仍无法正常下载，自动跳过ID为${tempIdList.pop()}的歌曲，请手动检查！`
-            )
+            );
+            retryCounter = 0;
         }
         if (download_counter === 0 || tempIdList.length === 0) {
             log.info(
@@ -320,29 +457,18 @@ const downloadMusic = async (idList) => {
 
             // 下载歌词
             if (config.generic.download_lyric === true) {
-                log.debug('下载歌词中');
-                response = await request.get(`/lyric?id=${currentId}`);
-                log.debug('歌词信息详情: ' + JSON.stringify(response.data));
-                if (response.data.nolyric !== true && response.data.lrc) {
-                    const lyric = response.data.lrc.lyric;
-                    const lyricPath = path.join(config.generic.temp_music_store_path, lyricFileName);
-                    fs.writeFileSync(lyricPath, lyric, {
-                        encoding: 'utf-8',
-                    });
-                } else {
-                    log.debug('没有歌词，跳过下载歌词...');
-                }
+                await downloadLyric(currentId, lyricFileName);
             }
 
             // 移动文件到音乐目录
             log.debug('移动文件到音乐目录中');
-            await fsPromised.rename(
+            await moveFile(
                 path.join(config.generic.temp_music_store_path, tempMusicName),
                 path.join(config.generic.music_store_path, musicFileName),
             );
 
             if (fs.existsSync(path.join(config.generic.temp_music_store_path, lyricFileName))) {
-                await fsPromised.rename(
+                await moveFile(
                     path.join(config.generic.temp_music_store_path, lyricFileName),
                     path.join(config.generic.music_store_path, lyricFileName),
                 );
@@ -376,7 +502,7 @@ const downloadMusic = async (idList) => {
 
     log.debug('已同步音乐数量: ' + syncedIdList.length);
     return syncedIdList;
-}
+};
 
 const parseMusicDetail = async (musicDetail) => {
     // 歌曲名称
@@ -409,7 +535,7 @@ const parseMusicDetail = async (musicDetail) => {
     return {
         musicName, albumName, releaseYear, artistName, discIndex, trackIndex,
     };
-}
+};
 
 const writeSyncedMusicList = async (syncedIdList) => {
     log.debug('新数据条数: ' + syncedIdList.length);
@@ -426,7 +552,7 @@ const writeSyncedMusicList = async (syncedIdList) => {
     // 写入新数据
     log.debug('写入新数据，条数: ' + newData.length);
     fs.writeFileSync('./data/playlist.json', JSON.stringify(newData));
-}
+};
 
 (async () => {
     log.debug('欢迎文本');
@@ -452,7 +578,7 @@ const writeSyncedMusicList = async (syncedIdList) => {
         const newConfig = {
             ...config,
             url: newUrl,
-        }
+        };
         return newConfig;
     });
 
@@ -467,14 +593,14 @@ const writeSyncedMusicList = async (syncedIdList) => {
     const playlist = (await fetchPlaylist()).map((eachMusic) => ({ id: eachMusic.id }));
     log.info('播放列表长度为: ' + playlist.length);
 
-    log.debug('与本地同步播放列表')
+    log.debug('与本地同步播放列表');
     // 与本地同步播放列表（只同步添加过的音乐）
     const addedMusic = await diffPlaylist(playlist);
     log.info('本次待同步音乐数量为: ' + addedMusic.length);
-    
+
     // 下载音乐
     const syncedIdList = await downloadMusic(addedMusic);
 
-    // 已同步音乐写入JSON文件
-    await writeSyncedMusicList(syncedIdList);
-})()
+    // // 已同步音乐写入JSON文件
+    // await writeSyncedMusicList(syncedIdList);
+})();
