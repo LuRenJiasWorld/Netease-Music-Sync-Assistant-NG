@@ -1,9 +1,7 @@
 const fs = require('fs');
 const moveFile = require('move-file');
-const fsPromised = require('fs').promises;
 const path = require('path');
 const ini = require('ini');
-const axios = require('axios');
 const log = require('loglevel');
 const prefix = require('loglevel-plugin-prefix');
 const chalk = require('chalk');
@@ -11,17 +9,19 @@ const ffmetadata = require('ffmetadata');
 const flacmetadata = require("flac-metadata2");
 const filenamify = require('filenamify');
 const Downloader = require('nodejs-file-downloader');
-const urlParameterAppend = require('url-parameter-append');
 const fileType = require('file-type');
 const { cloneDeep } = require('lodash');
 const { sleep } = require('sleepjs');
 const {
     login_cellphone,
+    playlist_detail,
+    lyric,
+    song_detail,
+    song_url,
 } = require('NeteaseCloudMusicApi')
 
 // 初始化配置
 const config = ini.parse(fs.readFileSync('./config/config.ini', 'utf-8'));
-
 
 // 日志配置
 const logColors = {
@@ -42,12 +42,15 @@ prefix.apply(log, {
 
 log.setLevel(config.runtime.log_level);
 
-// 初始化Axios
-let request = axios.create({
-    baseURL: config.api.api_endpoint,
-    timeout: 3000,
-    withCredentials: true,
-});
+let cookie = '';
+
+// 在API中自动加入cookie字段
+const cookieWrapper = async (endpoint, param) => (
+    await endpoint({
+        ...param,
+        cookie,
+    })
+);
 
 const welcome = async () => {
     const metaData = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
@@ -73,13 +76,14 @@ const login = async () => {
     }
     try {
         log.debug('登录后从服务器获取Cookie');
-        const response = await request.get(
-            `${config.api.api_endpoint}/login/cellphone?phone=${config.account.phone}&md5_password=${config.account.md5_password}`
-        );
+        const response = await login_cellphone({
+            phone: config.account.phone,
+            md5_password: config.account.md5_password,
+        });
 
-        log.debug('登录结果: ' + JSON.stringify(response.data));
-        log.debug('Cookie从服务器获取成功: ' + response.data['cookie']);
-        return response.data['cookie'];
+        log.debug('登录结果: ' + JSON.stringify(response.body));
+        log.debug('Cookie从服务器获取成功: ' + response.body['cookie']);
+        return response.body['cookie'];
     } catch (e) {
         log.error('登录时出现错误: ' + e);
     }
@@ -97,8 +101,10 @@ const getUserInfo = async () => {
 };
 
 const fetchPlaylist = async () => {
-    const response = await request.get(`/playlist/detail?id=${config.account.playlist_id}`);
-    return response.data.playlist.trackIds;
+    const response = await playlist_detail({
+        id: config.account.playlist_id,
+    });
+    return response.body.playlist.trackIds;
 };
 
 const diffPlaylist = async (playlist) => {
@@ -203,15 +209,17 @@ const id3Embed = ({ musicPath, coverPath, musicMeta }) => {
 
 const downloadLyric = async (currentId, lyricFileName) => {
     log.debug('下载歌词中');
-    const response = await request.get(`/lyric?id=${currentId}`);
-    log.debug('歌词信息详情: ' + JSON.stringify(response.data));
-    if (response.data.nolyric !== true && response.data.lrc) {
-        let lyric = response.data.lrc.lyric.split('\n');
+    const response = await lyric({
+        id: currentId,
+    });
+    log.debug('歌词信息详情: ' + JSON.stringify(response.body));
+    if (response.body.nolyric !== true && response.body.lrc) {
+        let lyric = response.body.lrc.lyric.split('\n');
         let tlyric = [];
         if (config.generic.download_lyric_translation === true) {
             log.debug('下载歌词翻译');
-            if (response.data.tlyric && response.data.tlyric.lyric !== "") {
-                tlyric = response.data.tlyric.lyric.split('\n');
+            if (response.body.tlyric && response.body.tlyric.lyric !== "") {
+                tlyric = response.body.tlyric.lyric.split('\n');
             }
         }
 
@@ -367,12 +375,14 @@ const downloadMusic = async (idList) => {
             `🚗 正在同步第${downloadLimit - download_counter + 1}首，列表剩余${tempIdList.length}首，本次下载剩余${download_counter}首`
         );
 
-        const currentId = tempIdList.pop();
+        const currentId = tempIdList.pop().toString();
 
         try {
             // 获取歌曲详情
-            let response = await request.get(`/song/detail?ids=${currentId}`);
-            const musicDetail = response.data.songs[0];
+            let response = await cookieWrapper(song_detail, {
+                ids: currentId,
+            });
+            const musicDetail = response.body.songs[0];
             log.debug('歌曲详情: ' + JSON.stringify(musicDetail));
 
             const {
@@ -404,8 +414,11 @@ const downloadMusic = async (idList) => {
 
             // 下载音乐文件
             log.debug('下载音乐文件');
-            response = await request.get(`/song/url?id=${currentId}&br=${config.generic.music_bitrate}`);
-            const musicDownloadInfo = response.data.data[0];
+            response = await cookieWrapper(song_url, {
+                id: currentId,
+                br: config.generic.music_bitrate,
+            });
+            const musicDownloadInfo = JSON.parse(response.body.toString()).data[0];
             log.debug('音乐下载信息详情: ' + JSON.stringify(musicDownloadInfo));
 
             const tempMusicName = `${currentId}.${musicDownloadInfo.type || 'mp3'}`;
@@ -560,29 +573,12 @@ const writeSyncedMusicList = async (syncedIdList) => {
 
     // 登录
     log.debug('登录');
-    const cookie = await login();
+    cookie = await login();
     log.debug('Cookie获取成功: ' + cookie);
     log.info('登录成功');
 
     log.debug('保存Cookie');
     await saveCookie(cookie);
-
-    // 登录之后在每个请求的结尾都加上Cookie
-    log.debug('在请求结尾添加Cookie');
-    await request.interceptors.request.use(function (config) {
-        log.debug('拦截请求成功，请求URL为: ' + config.url);
-        const newUrl = urlParameterAppend(config.url, {
-            cookie: encodeURIComponent(cookie),
-        });
-        log.debug('拦截后的新URL为: ' + newUrl);
-        const newConfig = {
-            ...config,
-            url: newUrl,
-        };
-        return newConfig;
-    });
-
-    await sleep(2000);
 
     // 获取用户信息，主要目的是检查Cookie是否过期，顺便向用户展示其基础信息，提升用户体验
     log.debug('获取用户信息');
@@ -602,5 +598,5 @@ const writeSyncedMusicList = async (syncedIdList) => {
     const syncedIdList = await downloadMusic(addedMusic);
 
     // // 已同步音乐写入JSON文件
-    // await writeSyncedMusicList(syncedIdList);
+    await writeSyncedMusicList(syncedIdList);
 })();

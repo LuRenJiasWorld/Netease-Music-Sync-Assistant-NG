@@ -10,7 +10,6 @@
   "author": "LuRenJiasWorld<loli@lurenjia.in>",
   "license": "MIT",
   "dependencies": {
-    "axios": "^0.21.1",
     "chalk": "^4.1.0",
     "ffmetadata": "^1.7.0",
     "file-type": "^16.3.0",
@@ -20,8 +19,9 @@
     "lodash": "^4.17.21",
     "loglevel": "^1.7.1",
     "loglevel-plugin-prefix": "^0.8.4",
+    "move-file": "^2.0.0",
+    "NeteaseCloudMusicApi": "^4.0.11",
     "nodejs-file-downloader": "^4.4.2",
-    "sleepjs": "^4.0.3",
-    "url-parameter-append": "^1.0.4"
+    "sleepjs": "^4.0.3"
   }
 }
