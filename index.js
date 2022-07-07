@@ -56,7 +56,7 @@ const welcome = async () => {
     const metaData = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
     log.info(`😉 欢迎使用${metaData.name} v${metaData.version} ！`);
     log.info(`🙆‍ 作者：${metaData.author}，光荣地以${metaData.license}释出源码，祝您使用愉快！`);
-    log.info(`📃 请阅读根目录下的README.md获取使用详情，或在 https://example.placeholder/ 求助。`);
+    log.info(`📃 请阅读根目录下的README.md获取使用详情，或在 https://github.com/LuRenJiasWorld/Netease-Music-Sync-Assistant-NG 求助。`);
     log.info('');
 };
 

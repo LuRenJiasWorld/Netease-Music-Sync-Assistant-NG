@@ -1,6 +1,6 @@
 {
   "name": "netease-music-sync-assistant-ng",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "Sync Netease Music playlist with local at ease",
   "main": "index.js",
   "scripts": {
