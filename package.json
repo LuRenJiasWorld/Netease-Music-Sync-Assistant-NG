@@ -4,7 +4,7 @@
   "description": "Sync Netease Music playlist with local at ease",
   "main": "index.js",
   "scripts": {
-    "start": "node ./index.js",
+    "start": "node --trace-warnings ./index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "LuRenJiasWorld<loli@lurenjia.in>",
@@ -20,7 +20,7 @@
     "loglevel": "^1.7.1",
     "loglevel-plugin-prefix": "^0.8.4",
     "move-file": "^2.0.0",
-    "NeteaseCloudMusicApi": "^4.0.11",
+    "NeteaseCloudMusicApi": "^4.6.6",
     "nodejs-file-downloader": "^4.4.2",
     "sleepjs": "^4.0.3"
   }

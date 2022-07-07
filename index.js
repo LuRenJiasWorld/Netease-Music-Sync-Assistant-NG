@@ -10,7 +10,7 @@ const flacmetadata = require("flac-metadata2");
 const filenamify = require('filenamify');
 const Downloader = require('nodejs-file-downloader');
 const fileType = require('file-type');
-const { cloneDeep } = require('lodash');
+const { cloneDeep, each } = require('lodash');
 const { sleep } = require('sleepjs');
 const {
     login_cellphone,
@@ -101,7 +101,7 @@ const getUserInfo = async () => {
 };
 
 const fetchPlaylist = async () => {
-    const response = await playlist_detail({
+    const response = await cookieWrapper(playlist_detail, {
         id: config.account.playlist_id,
     });
     return response.body.playlist.trackIds;
@@ -418,7 +418,7 @@ const downloadMusic = async (idList) => {
                 id: currentId,
                 br: config.generic.music_bitrate,
             });
-            const musicDownloadInfo = JSON.parse(response.body.toString()).data[0];
+            const musicDownloadInfo = response.body.data[0];
             log.debug('音乐下载信息详情: ' + JSON.stringify(musicDownloadInfo));
 
             const tempMusicName = `${currentId}.${musicDownloadInfo.type || 'mp3'}`;
@@ -514,7 +514,7 @@ const downloadMusic = async (idList) => {
     }
 
     log.debug('已同步音乐数量: ' + syncedIdList.length);
-    return syncedIdList;
+    return syncedIdList.map((eachIdString) => (parseInt(eachIdString)));
 };
 
 const parseMusicDetail = async (musicDetail) => {
@@ -568,35 +568,39 @@ const writeSyncedMusicList = async (syncedIdList) => {
 };
 
 (async () => {
-    log.debug('欢迎文本');
-    await welcome();
+    try {
+        log.debug('欢迎文本');
+        await welcome();
 
-    // 登录
-    log.debug('登录');
-    cookie = await login();
-    log.debug('Cookie获取成功: ' + cookie);
-    log.info('登录成功');
+        // 登录
+        log.debug('登录');
+        cookie = await login();
+        log.debug('Cookie获取成功: ' + cookie);
+        log.info('登录成功');
 
-    log.debug('保存Cookie');
-    await saveCookie(cookie);
+        log.debug('保存Cookie');
+        await saveCookie(cookie);
 
-    // 获取用户信息，主要目的是检查Cookie是否过期，顺便向用户展示其基础信息，提升用户体验
-    log.debug('获取用户信息');
-    await getUserInfo();
+        // 获取用户信息，主要目的是检查Cookie是否过期，顺便向用户展示其基础信息，提升用户体验
+        log.debug('获取用户信息');
+        await getUserInfo();
 
-    // 获取播放列表
-    log.debug('获取当前播放列表');
-    const playlist = (await fetchPlaylist()).map((eachMusic) => ({ id: eachMusic.id }));
-    log.info('播放列表长度为: ' + playlist.length);
+        // 获取播放列表
+        log.debug('获取当前播放列表');
+        const playlist = (await fetchPlaylist()).map((eachMusic) => ({ id: eachMusic.id }));
+        log.info('播放列表长度为: ' + playlist.length);
 
-    log.debug('与本地同步播放列表');
-    // 与本地同步播放列表（只同步添加过的音乐）
-    const addedMusic = await diffPlaylist(playlist);
-    log.info('本次待同步音乐数量为: ' + addedMusic.length);
+        log.debug('与本地同步播放列表');
+        // 与本地同步播放列表（只同步添加过的音乐）
+        const addedMusic = await diffPlaylist(playlist);
+        log.info('本次待同步音乐数量为: ' + addedMusic.length);
 
-    // 下载音乐
-    const syncedIdList = await downloadMusic(addedMusic);
+        // 下载音乐
+        const syncedIdList = await downloadMusic(addedMusic);
 
-    // // 已同步音乐写入JSON文件
-    await writeSyncedMusicList(syncedIdList);
+        // 已同步音乐写入JSON文件
+        await writeSyncedMusicList(syncedIdList);
+    } catch (e) {
+        log.error(e);
+    }
 })();
