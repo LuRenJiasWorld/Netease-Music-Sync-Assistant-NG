@@ -13,11 +13,11 @@ const fileType = require('file-type');
 const { cloneDeep, each } = require('lodash');
 const { sleep } = require('sleepjs');
 const {
-    login_cellphone,
+    login: login_email,
     playlist_detail,
     lyric,
     song_detail,
-    song_url,
+    song_url_v1,
 } = require('NeteaseCloudMusicApi')
 
 // 初始化配置
@@ -76,8 +76,8 @@ const login = async () => {
     }
     try {
         log.debug('登录后从服务器获取Cookie');
-        const response = await login_cellphone({
-            phone: config.account.phone,
+        const response = await login_email({
+            email: config.account.email,
             md5_password: config.account.md5_password,
         });
 
@@ -85,7 +85,7 @@ const login = async () => {
         log.debug('Cookie从服务器获取成功: ' + response.body['cookie']);
         return response.body['cookie'];
     } catch (e) {
-        log.error('登录时出现错误: ' + e);
+        log.error('登录时出现错误: ' + JSON.stringify(e));
     }
 };
 
@@ -414,9 +414,9 @@ const downloadMusic = async (idList) => {
 
             // 下载音乐文件
             log.debug('下载音乐文件');
-            response = await cookieWrapper(song_url, {
+            response = await cookieWrapper(song_url_v1, {
                 id: currentId,
-                br: config.generic.music_bitrate,
+                level: config.generic.music_quality_level,
             });
             const musicDownloadInfo = response.body.data[0];
             log.debug('音乐下载信息详情: ' + JSON.stringify(musicDownloadInfo));

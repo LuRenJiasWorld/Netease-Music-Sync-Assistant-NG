@@ -20,7 +20,7 @@
     "loglevel": "^1.7.1",
     "loglevel-plugin-prefix": "^0.8.4",
     "move-file": "^2.0.0",
-    "NeteaseCloudMusicApi": "^4.6.6",
+    "NeteaseCloudMusicApi": "^4.8.9",
     "nodejs-file-downloader": "^4.4.2",
     "sleepjs": "^4.0.3"
   }
